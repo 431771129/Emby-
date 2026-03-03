@@ -1,25 +1,8 @@
-# Emby 多后端代理 Worker
+# Emby 多后端代理 Worker（负载均衡 + 管理面板）
 
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+这是一个部署在 Cloudflare Workers 上的 Emby 聚合代理脚本，支持**多后端负载均衡**、**自动健康检查**、**动态管理面板**、**自定义背景和文字颜色**等高级功能。无需频繁修改代码，通过 Web 界面即可管理后端服务器。
 
-一个部署在 Cloudflare Workers 上的 Emby 聚合代理，支持**多后端负载均衡**、**自动健康检查**、**动态管理面板**、**自定义背景与文字颜色**等高级功能。通过可视化管理界面，您可以轻松添加、编辑、删除后端服务器，无需修改代码。
-
----
-
-## 🚀 项目简介
-
-本项目旨在解决以下痛点：
-- 拥有多个 Emby 公益服，需要统一入口并自动切换可用节点。
-- 后端服务器经常变动，希望有动态管理能力。
-- 希望代理具备缓存优化、WebSocket 支持、防盗链绕过等高级特性。
-- 想要一个美观的首页导航页，并支持个性化外观设置（背景图片、模糊玻璃效果、文字颜色）。
-
-通过 Cloudflare Workers 的全球边缘网络，实现低延迟、高可用的 Emby 代理服务。
-
----
-
-## ✨ 核心特性
+## ✨ 主要特性
 
 - **多后端负载均衡**：每个后端标识（如 `server1`）可配置多个 URL，随机选择健康的 URL 进行转发。
 - **自动健康检查**：通过 Cron 触发器每分钟检测所有 URL 的可用性，并在首页显示在线/离线状态。
@@ -32,40 +15,90 @@
 - **UA 伪装 & CSP 绕过**：避免被源站屏蔽，确保页面正常加载。
 - **HTML 弹窗过滤**（可选）：可移除页面中的公告、广告等元素。
 
----
+## 📋 部署前准备
 
-## 📊 请求处理流程图
+1. **Cloudflare 账号**：注册 [Cloudflare](https://dash.cloudflare.com/)。
+2. **KV 命名空间**：在 Cloudflare Workers 的 KV 页面创建一个命名空间（如 `EMBY_KV`）。
+3. **公益服务器地址**：准备您要代理的 Emby 服务器 URL 列表（例如 `https://gy.meowfly.de:443`）。
 
-```mermaid
-flowchart TD
-    A[客户端请求] --> B{路径是 /admin?}
-    B -->|是| C[处理管理面板<br>认证、展示配置、保存]
-    B -->|否| D{路径是 /health 或 /ping?}
-    D -->|是| E[返回健康状态 OK]
-    D -->|否| F[从KV读取后端配置]
-    
-    F --> G{路径中是否包含<br>有效后端标识?}
-    G -->|是| H[提取 backendKey<br>重写路径]
-    G -->|否| I{从Cookie中<br>读取 backendKey?}
-    I -->|是| H
-    I -->|否| J{路径是 /?}
-    
-    J -->|是| K[渲染首页导航页<br>显示所有后端及健康状态]
-    J -->|否| L[使用默认后端]
+## 🚀 部署步骤
 
-    H --> M[确定目标后端]
-    L --> M
-    K --> Z[结束]
+### 1. 创建 Worker 脚本
+- 进入 Cloudflare Dashboard → Workers & Pages → 创建应用程序 → 创建 Worker。
+- 输入名称（如 `emby-proxy`），点击“部署”。
+- 点击“编辑代码”，将[完整代码](链接到您的代码文件)粘贴进去，并修改 `ADMIN_PASS` 为强密码。
 
-    M --> N[负载均衡选择<br>一个健康的URL]
-    N --> O[构建代理请求头<br>复用已解析的Host]
-    
-    O --> P{请求类型判断}
-    P -->|媒体流| Q[handleMediaStream<br>转发Range/If-Range等]
-    P -->|静态资源| R[handleWithCache<br>缓存键含版本号]
-    P -->|API/HTML| S[handleApiRequest<br>处理重定向/WebSocket]
+### 2. 绑定 KV 命名空间
+- 在 Worker 编辑页面，点击左下角的“设置” → “变量”。
+- 在“KV 命名空间绑定”区域，点击“添加绑定”。
+  - **变量名称**：输入 `EMBY_KV`
+  - **KV 命名空间**：选择您创建的命名空间
+- 点击“保存”。
 
-    Q --> T[返回响应]
-    R --> T
-    S --> T
-    T --> Z
+### 3. 添加 Cron 触发器（健康检查）
+- 进入 Worker 的“设置” → “触发器”。
+- 在“Cron 触发器”区域，点击“添加 Cron 触发器”，输入 `* * * * *`（每分钟执行）。
+- 点击“保存”。
+
+### 4. 部署并测试
+- 点击 Worker 编辑页面的“保存并部署”。
+- 访问您的 Worker 域名（如 `https://你的worker名.你的用户名.workers.dev`）：
+  - 首次访问根路径 `/` 会提示未配置服务器。
+  - 访问 `/admin`，使用用户名 `admin` 和您设置的密码登录管理面板。
+
+## 🎨 使用指南
+
+### 管理面板
+登录 `/admin` 后，您可以：
+- **添加后端组**：点击“添加新服务器组”，输入 Key（如 `server1`）和多个 URL（每行一个）。
+- **设置默认后端**：在“默认启动后端”输入框中填写 Key。
+- **自定义外观**：
+  - 输入背景图片 URL，点击“预览”实时查看。
+  - 调整模糊强度滑块，液态玻璃效果即时变化。
+  - 选择文字颜色（深色/浅色）以适配背景。
+  - 勾选“应用到首页导航页”使首页也应用相同样式。
+- **保存配置**：点击“保存所有配置”，设置立即生效。
+
+### 访问后端
+- **浏览器**：直接访问 `https://你的域名/server1/web/index.html` 即可进入对应后端的 Emby Web 界面。
+- **首页导航页**：访问根路径 `/`，会列出所有后端组及其在线状态，点击链接即可进入。
+- **第三方客户端（如 Infuse / Apple TV）**：在地址栏输入 `https://你的域名/server1`（将 `server1` 替换为实际 Key），客户端会自动处理后续请求。
+
+### 缓存版本控制
+如果后端更新了海报等静态资源但 URL 未变，可修改代码中的 `cacheVersion` 值（如 `'v2'`），所有缓存键将更新，旧缓存自动失效，实现全局刷新。
+
+## ⚙️ 可选配置
+
+在代码开头的 `myConfig` 对象中，您可以调整以下功能开关：
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `enableCors` | 是否启用 CORS 头 | `true` |
+| `enableCache` | 是否缓存静态资源 | `true` |
+| `enableUAMasking` | 是否伪装 User-Agent | `true` |
+| `enableCSPBypass` | 是否移除 CSP 头 | `true` |
+| `enableHtmlFilter` | 是否启用 HTML 弹窗过滤 | `false` |
+| `filterSelectors` | 要移除的 CSS 选择器数组 | `['.notice', '#popup', '.advertisement']` |
+| `rewriteReferer` | 是否将 Referer 重写为目标地址（防盗链） | `false` |
+| `rewriteOrigin` | 是否将 Origin 重写为目标地址（防盗链） | `false` |
+
+## ❓ 常见问题
+
+### Q: 登录管理面板时提示“401 Unauthorized”或“Forbidden”
+A: 请检查代码中的 `ADMIN_PASS` 是否已修改为您设置的密码，并重新部署。如密码正确仍无法登录，尝试清除浏览器缓存或使用无痕模式。
+
+### Q: 添加后端后首页仍显示“未找到后端”
+A: 确认 KV 绑定是否正确，变量名必须为 `EMBY_KV`，且绑定到正确的命名空间。保存配置后等待几秒，刷新页面。
+
+### Q: 健康状态不更新
+A: 确认 Cron 触发器已添加并生效（`* * * * *`）。等待至少一分钟，再次刷新首页。
+
+### Q: 首页背景不显示
+A: 背景图片 URL 必须支持 HTTPS 且允许跨域。检查浏览器控制台是否有 CORS 错误，或尝试更换图片地址。
+
+### Q: 流媒体无法拖动进度条
+A: 代码已完整保留 `If-Range`、`Range` 等头部，确保断点续传正常。如仍有问题，请检查后端服务器是否支持 Range 请求。
+
+## 📄 许可证
+
+本项目采用 MIT 许可证。详情请参见 [LICENSE](LICENSE) 文件。
