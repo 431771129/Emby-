@@ -19,7 +19,7 @@
 
 1. **Cloudflare 账号**：注册 [Cloudflare](https://dash.cloudflare.com/)。
 2. **KV 命名空间**：在 Cloudflare Workers 的 KV 页面创建一个命名空间（如 `EMBY_KV`）。
-3. **公益服务器地址**：准备您要代理的 Emby 服务器 URL 列表（例如 `https://gy.meowfly.de:443`）。
+3. **公益服务器地址**：准备您要代理的 Emby 服务器 URL 列表（例如 `(https://emby1.example.com:443)`）。
 
 ## 🚀 部署步骤
 
